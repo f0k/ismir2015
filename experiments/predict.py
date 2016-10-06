@@ -45,6 +45,9 @@ def opts_parser():
             type=float, default=0.0,
             help='Perform test-time pitch-shifting of given amount and '
                  'direction in percent (e.g., -10 shifts down by 10%%).')
+    parser.add_argument('--scribble',
+            action='store_true', default=False,
+            help='If given, add random wiggly lines to spectrograms.')
     parser.add_argument('--mem-use',
             type=str, choices=('high', 'mid', 'low'), default='mid',
             help='How much main memory to use. More memory allows a faster '
@@ -127,6 +130,11 @@ def main():
 
     # - define generator for Z-scoring
     spects = ((spect - mean) * istd for spect in spects)
+
+    # - wiggly-lines if needed
+    if options.scribble:
+        spects = (augment.scribble(spect, line_width=3, loudness=1)
+                  for spect in spects)
 
     # - define generator for silence-padding
     pad = np.tile((np.log(1e-7) - mean) * istd, (blocklen // 2, 1))

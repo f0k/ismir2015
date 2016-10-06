@@ -196,6 +196,50 @@ def apply_znorm(batches, mean, istd):
         yield (spects - mean) * istd, labels
 
 
+def scribble(spect, rate=5/70., aa_factor=2, line_width=2, loudness=2):
+    """
+    Scribble random wiggly lines onto the given spectrogram, with `rate` turn
+    points per frame on average.
+    """
+    frames, bins = (spect.shape[-2] * aa_factor, spect.shape[-1] * aa_factor)
+    num = int(frames * rate)
+    # x coordinates: advance by random amount between points
+    x_coords = np.random.rand(num).cumsum()
+    x_coords *= (frames - 1) / x_coords[-1]
+    # y coordinates: slowly varying plus fast varying part
+    y_slow = np.interp(np.linspace(0, 1, num),
+                       np.linspace(0, 1, num//5),
+                       np.random.rand(num//5))
+    y_fast = np.random.rand(num)
+    y_coords = (.75 * y_slow + .25 * y_fast)
+    y_coords *= bins
+    x_coords = x_coords.astype(np.int)
+    y_coords = y_coords.astype(np.int)
+    # draw lines, with antialiasing
+    from PIL import Image, ImageDraw
+    img = Image.new('L', (frames, bins), 0)
+    draw = ImageDraw.Draw(img)
+    draw.line(zip(x_coords, y_coords), fill=255,
+              width=int(line_width * aa_factor))
+    if aa_factor > 1:
+        img = img.resize(spect.shape, Image.ANTIALIAS)
+    img = np.asarray(img)
+    return spect + np.asarray(img, dtype=spect.dtype).T * (loudness / 255.)
+
+
+def apply_random_scribbles(batches, amount=.1, **kwargs):
+    """
+    Draws random wiggly lines over a given amount of the examples.
+    """
+    for spects, labels in batches:
+        for idx, spect in enumerate(spects):
+            if np.random.rand() < amount:
+                spect[:] = scribble(spect,
+                                    line_width=.5 + 3 * np.random.rand(),
+                                    loudness=2 * np.random.rand())
+        yield spects, labels
+
+
 def generate_in_background(generators, num_cached=50, in_processes=False):
     """
     Runs generators in background threads or processes, caching up to
