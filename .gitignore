@@ -1,0 +1,8 @@
+datasets/jamendo/audio/*.mp3
+datasets/jamendo/audio/*.ogg
+datasets/jamendo/filelists/train
+datasets/jamendo/filelists/valid
+datasets/jamendo/filelists/test
+datasets/jamendo/labels/*.lab
+experiments/*.npz
+*.pyc
