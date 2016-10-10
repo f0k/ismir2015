@@ -99,27 +99,12 @@ def main():
         timestamps = np.arange(len(spect)) / float(fps)
         labels.append(create_aligned_targets(segments, timestamps, np.bool))
 
-    # - load mean/std or compute it, if not computed yet
-    meanstd_file = os.path.join(os.path.dirname(__file__),
-                                '%s_raw_meanstd.npz' % options.dataset)
-    try:
-        with np.load(meanstd_file) as f:
-            mean = f['mean']
-            std = f['std']
-    except (IOError, KeyError):
-        print("Computing mean and standard deviation...")
-        mean, std = znorm.compute_mean_std(np.log1p(spect) for spect in spects)
-        np.savez(meanstd_file, mean=mean, std=std)
-    mean = mean[:bin_mel_max].astype(floatX)
-    istd = np.reciprocal(std[:bin_mel_max]).astype(floatX)
-
     # - prepare training data generator
     print("Preparing training data feed...")
     if not options.augment:
-        # Without augmentation, we just precompute the normalized spectra
-        # and create a generator that returns mini-batches of random excerpts
-        spects = [(np.log1p(spect[:, :bin_mel_max]) - mean) * istd
-                  for spect in spects]
+        # Without augmentation, we just create a generator that returns
+        # mini-batches of random excerpts
+        spects = [spect[:, :bin_mel_max] for spect in spects]
         batches = augment.grab_random_excerpts(
             spects, labels, batchsize, blocklen)
     else:
@@ -153,12 +138,6 @@ def main():
 
             # We apply random frequency filters
             batches = augment.apply_random_filters(batches, mel_max, max_db=10)
-
-            # We logarithmize
-            batches = augment.apply_logarithm(batches)
-
-            # We apply normalization
-            batches = augment.apply_znorm(batches, mean, istd)
 
             return batches
 

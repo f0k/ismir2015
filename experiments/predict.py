@@ -106,24 +106,11 @@ def main():
                     order=spline_order)
                   for spect in spects)
 
-    # - define generator for logarithmized spectra
-    spects = (np.log1p(spect[:, :bin_mel_max])
-              for spect in spects)
-
-    # - load mean/std
-    meanstd_file = os.path.join(os.path.dirname(__file__),
-                                '%s_raw_meanstd.npz' % options.dataset)
-    with np.load(meanstd_file) as f:
-        mean = f['mean']
-        std = f['std']
-    mean = mean[:bin_mel_max].astype(floatX)
-    istd = np.reciprocal(std[:bin_mel_max]).astype(floatX)
-
-    # - define generator for Z-scoring
-    spects = ((spect - mean) * istd for spect in spects)
+    # - define generator for cropped spectra
+    spects = (spect[:, :bin_mel_max] for spect in spects)
 
     # - define generator for silence-padding
-    pad = np.tile(-mean * istd, (blocklen // 2, 1))
+    pad = np.zeros((blocklen // 2, bin_mel_max), dtype=floatX)
     spects = (np.concatenate((pad, spect, pad), axis=0) for spect in spects)
 
     # - we start the generator in a background thread (not required)
