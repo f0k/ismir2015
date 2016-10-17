@@ -189,6 +189,13 @@ def main():
     input_var = T.tensor3('input')
     inputs = input_var.dimshuffle(0, 'x', 1, 2)  # insert "channels" dimension
     network = model.architecture(inputs, (None, 1, blocklen, bin_mel_max), cfg)
+    print("- %d layers (%d with weights), %f mio params" %
+          (len(lasagne.layers.get_all_layers(network)),
+           sum(hasattr(l, 'W') for l in lasagne.layers.get_all_layers(network)),
+           lasagne.layers.count_params(network, trainable=True) / 1e6))
+    print("- weight shapes: %r" % [l.W.get_value().shape
+           for l in lasagne.layers.get_all_layers(network)
+           if hasattr(l, 'W') and hasattr(l.W, 'get_value')])
 
     # create cost expression
     target_var = T.vector('targets')
