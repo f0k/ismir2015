@@ -27,6 +27,8 @@ from simplecache import cached
 import audio
 import model
 import augment
+import config
+
 
 def opts_parser():
     descr = ("Computes predictions with a neural network trained for singing "
@@ -57,6 +59,17 @@ def opts_parser():
     parser.add_argument('--plot',
             action='store_true', default=False,
             help='If given, plot each spectrogram with predictions on screen.')
+    parser.add_argument('--vars', metavar='FILE',
+            action='append', type=str,
+            default=[os.path.join(os.path.dirname(__file__), 'defaults.vars')],
+            help='Reads configuration variables from a FILE of KEY=VALUE '
+                 'lines. Can be given multiple times, settings from later '
+                 'files overriding earlier ones. Will read defaults.vars, '
+                 'then files given here.')
+    parser.add_argument('--var', metavar='KEY=VALUE',
+            action='append', type=str,
+            help='Set the configuration variable KEY to VALUE. Overrides '
+                 'settings from --vars options. Can be given multiple times.')
     return parser
 
 def main():
@@ -65,14 +78,24 @@ def main():
     options = parser.parse_args()
     modelfile = options.modelfile
     outfile = options.outfile
-    sample_rate = 22050
-    frame_len = 1024
-    fps = 70
-    mel_bands = 80
-    mel_min = 27.5
-    mel_max = 8000
-    blocklen = 115
-    batchsize = 32
+
+    # read configuration files and immediate settings
+    cfg = {}
+    if os.path.exists(modelfile + '.vars'):
+        options.vars.insert(1, modelfile + '.vars')
+    for fn in options.vars:
+        cfg.update(config.parse_config_file(fn))
+    cfg.update(config.parse_variable_assignments(options.var))
+
+    # read some settings into local variables
+    sample_rate = cfg['sample_rate']
+    frame_len = cfg['frame_len']
+    fps = cfg['fps']
+    mel_bands = cfg['mel_bands']
+    mel_min = cfg['mel_min']
+    mel_max = cfg['mel_max']
+    blocklen = cfg['blocklen']
+    batchsize = cfg['batchsize']
     
     bin_nyquist = frame_len // 2 + 1
     bin_mel_max = bin_nyquist * 2 * mel_max // sample_rate
@@ -121,7 +144,7 @@ def main():
     # instantiate neural network
     input_var = T.tensor3('input')
     inputs = input_var.dimshuffle(0, 'x', 1, 2)  # insert "channels" dimension
-    network = model.architecture(inputs, (None, 1, blocklen, bin_mel_max))
+    network = model.architecture(inputs, (None, 1, blocklen, bin_mel_max), cfg)
 
     # load saved weights
     with np.load(modelfile) as f:

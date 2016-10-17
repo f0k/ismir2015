@@ -5,4 +5,5 @@ datasets/jamendo/filelists/valid
 datasets/jamendo/filelists/test
 datasets/jamendo/labels/*.lab
 experiments/*.npz
+experiments/*.npz.vars
 *.pyc

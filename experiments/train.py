@@ -29,6 +29,8 @@ import znorm
 from labels import create_aligned_targets
 import model
 import augment
+import config
+
 
 def opts_parser():
     descr = "Trains a neural network for singing voice detection."
@@ -48,6 +50,17 @@ def opts_parser():
     parser.add_argument('--cache-spectra', metavar='DIR',
             type=str, default=None,
             help='Store spectra in the given directory (disabled by default)')
+    parser.add_argument('--vars', metavar='FILE',
+            action='append', type=str,
+            default=[os.path.join(os.path.dirname(__file__), 'defaults.vars')],
+            help='Reads configuration variables from a FILE of KEY=VALUE '
+                 'lines. Can be given multiple times, settings from later '
+                 'files overriding earlier ones. Will read defaults.vars, '
+                 'then files given here.')
+    parser.add_argument('--var', metavar='KEY=VALUE',
+            action='append', type=str,
+            help='Set the configuration variable KEY to VALUE. Overrides '
+                 'settings from --vars options. Can be given multiple times.')
     return parser
 
 def main():
@@ -55,14 +68,22 @@ def main():
     parser = opts_parser()
     options = parser.parse_args()
     modelfile = options.modelfile
-    sample_rate = 22050
-    frame_len = 1024
-    fps = 70
-    mel_bands = 80
-    mel_min = 27.5
-    mel_max = 8000
-    blocklen = 115
-    batchsize = 32
+
+    # read configuration files and immediate settings
+    cfg = {}
+    for fn in options.vars:
+        cfg.update(config.parse_config_file(fn))
+    cfg.update(config.parse_variable_assignments(options.var))
+
+    # read some settings into local variables
+    sample_rate = cfg['sample_rate']
+    frame_len = cfg['frame_len']
+    fps = cfg['fps']
+    mel_bands = cfg['mel_bands']
+    mel_min = cfg['mel_min']
+    mel_max = cfg['mel_max']
+    blocklen = cfg['blocklen']
+    batchsize = cfg['batchsize']
     
     bin_nyquist = frame_len // 2 + 1
     bin_mel_max = bin_nyquist * 2 * mel_max // sample_rate
@@ -111,7 +132,7 @@ def main():
         # For time stretching and pitch shifting, it pays off to preapply the
         # spline filter to each input spectrogram, so it does not need to be
         # applied to each mini-batch later.
-        spline_order = 2
+        spline_order = cfg['spline_order']
         if spline_order > 1:
             from scipy.ndimage import spline_filter
             spects = [spline_filter(spect, spline_order).astype(floatX)
@@ -122,7 +143,7 @@ def main():
         def create_datafeed(spects, labels):
             # With augmentation, as we want to apply random time-stretching,
             # we request longer excerpts than we finally need to return.
-            max_stretch = .3
+            max_stretch = cfg['max_stretch']
             batches = augment.grab_random_excerpts(
                     spects, labels, batchsize=batchsize,
                     frames=int(blocklen / (1 - max_stretch)))
@@ -130,21 +151,22 @@ def main():
             # We wrap the generator in another one that applies random time
             # stretching and pitch shifting, keeping a given number of frames
             # and bins only.
-            max_shift = .3
+            max_shift = cfg['max_shift']
             batches = augment.apply_random_stretch_shift(
                     batches, max_stretch, max_shift,
                     keep_frames=blocklen, keep_bins=bin_mel_max,
                     order=spline_order, prefiltered=True)
 
             # We apply random frequency filters
-            batches = augment.apply_random_filters(batches, mel_max, max_db=10)
+            max_db = cfg['max_db']
+            batches = augment.apply_random_filters(batches, mel_max, max_db)
 
             return batches
 
         # We start the mini-batch generator and augmenter in one or more
         # background threads or processes (unless disabled).
-        bg_threads = 3
-        bg_processes = 0
+        bg_threads = cfg['bg_threads']
+        bg_processes = cfg['bg_processes']
         if not bg_threads and not bg_processes:
             # no background processing: just create a single generator
             batches = create_datafeed(spects, labels)
@@ -166,7 +188,7 @@ def main():
     # instantiate neural network
     input_var = T.tensor3('input')
     inputs = input_var.dimshuffle(0, 'x', 1, 2)  # insert "channels" dimension
-    network = model.architecture(inputs, (None, 1, blocklen, bin_mel_max))
+    network = model.architecture(inputs, (None, 1, blocklen, bin_mel_max), cfg)
 
     # create cost expression
     target_var = T.vector('targets')
@@ -177,9 +199,9 @@ def main():
 
     # prepare and compile training function
     params = lasagne.layers.get_all_params(network, trainable=True)
-    initial_eta = 0.01
-    eta_decay = 0.85
-    momentum = 0.95
+    initial_eta = cfg['initial_eta']
+    eta_decay = cfg['eta_decay']
+    momentum = cfg['momentum']
     eta = theano.shared(lasagne.utils.floatX(initial_eta))
     updates = lasagne.updates.nesterov_momentum(cost, params, eta, momentum)
     print("Compiling training function...")
@@ -187,8 +209,8 @@ def main():
 
     # run training loop
     print("Training:")
-    epochs = 20
-    epochsize = 2000
+    epochs = cfg['epochs']
+    epochsize = cfg['epochsize']
     batches = iter(batches)
     for epoch in range(epochs):
         err = 0
@@ -206,6 +228,8 @@ def main():
     print("Saving final model")
     np.savez(modelfile, **{'param%d' % i: p for i, p in enumerate(
             lasagne.layers.get_all_param_values(network))})
+    with io.open(modelfile + '.vars', 'wb') as f:
+        f.writelines('%s=%s\n' % kv for kv in cfg.items())
 
 if __name__=="__main__":
     main()

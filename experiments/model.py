@@ -19,7 +19,7 @@ try:
 except ImportError:
     pass
 
-def architecture(input_var, input_shape):
+def architecture(input_var, input_shape, cfg):
     layer = InputLayer(input_shape, input_var)
     layer = ExpressionLayer(layer, T.log1p)
     layer = batch_norm_vanilla(layer, axes=(0, 2), beta=None, gamma=None)
