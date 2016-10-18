@@ -47,6 +47,12 @@ def opts_parser():
     parser.add_argument('--no-augment',
             action='store_false', dest='augment',
             help='Disable train-time data augmentation')
+    parser.add_argument('--validate',
+            action='store_true', default=False,
+            help='Monitor validation loss (disabled by default)')
+    parser.add_argument('--no-validate',
+            action='store_false', dest='validate',
+            help='Disable monitoring validation loss (disabled by default)')
     parser.add_argument('--cache-spectra', metavar='DIR',
             type=str, default=None,
             help='Store spectra in the given directory (disabled by default)')
@@ -95,6 +101,12 @@ def main():
     # - load filelist
     with io.open(os.path.join(datadir, 'filelists', 'train')) as f:
         filelist = [l.rstrip() for l in f if l.rstrip()]
+    if options.validate:
+        with io.open(os.path.join(datadir, 'filelists', 'valid')) as f:
+            filelist_val = [l.rstrip() for l in f if l.rstrip()]
+        filelist.extend(filelist_val)
+    else:
+        filelist_val = []
 
     # - compute spectra
     print("Computing%s spectra..." %
@@ -119,6 +131,13 @@ def main():
                     for start, end, label in segments]
         timestamps = np.arange(len(spect)) / float(fps)
         labels.append(create_aligned_targets(segments, timestamps, np.bool))
+
+    # - split off validation data, if needed
+    if options.validate:
+        spects_val = spects[-len(filelist_val):]
+        spects = spects[:-len(filelist_val)]
+        labels_val = labels[-len(filelist_val):]
+        labels = labels[:-len(filelist_val)]
 
     # - prepare training data generator
     print("Preparing training data feed...")
@@ -223,12 +242,25 @@ def main():
     print("Compiling training function...")
     train_fn = theano.function([input_var, target_var], cost, updates=updates)
 
+    # prepare and compile validation function, if requested
+    if options.validate:
+        print("Compiling validation function...")
+        import model_to_fcn
+        network_test = model_to_fcn.model_to_fcn(network, allow_unlink=False)
+        outputs_test = lasagne.layers.get_output(network_test,
+                                                 deterministic=True)
+        cost_test = T.mean(lasagne.objectives.binary_crossentropy(outputs_test,
+                                                                  targets))
+        val_fn = theano.function([input_var, target_var],
+                                 [cost_test, outputs_test])
+
     # run training loop
     print("Training:")
     epochs = cfg['epochs']
     epochsize = cfg['epochsize']
     batches = iter(batches)
     for epoch in range(epochs):
+        # actual training
         err = 0
         for batch in progress(
                 range(epochsize), min_delay=.5,
@@ -237,9 +269,32 @@ def main():
             if not np.isfinite(err):
                 print("\nEncountered NaN loss in training. Aborting.")
                 sys.exit(1)
-        print("Train loss: %.3f" % (err / epochsize))
         if eta_decay != 1 and (epoch + 1) % eta_decay_every == 0:
             eta.set_value(eta.get_value() * lasagne.utils.floatX(eta_decay))
+
+        # report training loss
+        print("Train loss: %.3f" % (err / epochsize))
+
+        # compute and report validation loss, if requested
+        if options.validate:
+            val_err = 0
+            preds = []
+            max_len = fps * 30
+            for spect, label in zip(spects_val, labels_val):
+                # pick excerpt of 30 seconds in center of file
+                excerpt = slice(max(0, (len(spect) - max_len) // 2),
+                                (len(spect) + max_len) // 2)
+                # crop to maximum length and required spectral bins
+                spect = spect[None, excerpt, :bin_mel_max]
+                # crop to maximum length and remove edges lost in the network
+                label = label[excerpt][blocklen // 2:-(blocklen // 2)]
+                e, pred = val_fn(spect, label)
+                val_err += e
+                preds.append((pred[:, 0], label))
+            print("Validation loss: %.3f" % (val_err / len(filelist_val)))
+            from eval import evaluate
+            _, results = evaluate(*zip(*preds))
+            print("Validation error: %.3f" % (1 - results['accuracy']))
 
     # save final network
     print("Saving final model")
