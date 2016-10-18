@@ -53,6 +53,9 @@ def opts_parser():
     parser.add_argument('--no-validate',
             action='store_false', dest='validate',
             help='Disable monitoring validation loss (disabled by default)')
+    parser.add_argument('--save-errors',
+            action='store_true', default=False,
+            help='If given, save error log in {MODELFILE%%.npz}.err.npz.')
     parser.add_argument('--cache-spectra', metavar='DIR',
             type=str, default=None,
             help='Store spectra in the given directory (disabled by default)')
@@ -259,6 +262,8 @@ def main():
     epochs = cfg['epochs']
     epochsize = cfg['epochsize']
     batches = iter(batches)
+    if options.save_errors:
+        errors = []
     for epoch in range(epochs):
         # actual training
         err = 0
@@ -274,6 +279,8 @@ def main():
 
         # report training loss
         print("Train loss: %.3f" % (err / epochsize))
+        if options.save_errors:
+            errors.append(err / epochsize)
 
         # compute and report validation loss, if requested
         if options.validate:
@@ -295,6 +302,9 @@ def main():
             from eval import evaluate
             _, results = evaluate(*zip(*preds))
             print("Validation error: %.3f" % (1 - results['accuracy']))
+            if options.save_errors:
+                errors.append(val_err / len(filelist_val))
+                errors.append(1 - results['accuracy'])
 
     # save final network
     print("Saving final model")
@@ -302,6 +312,9 @@ def main():
             lasagne.layers.get_all_param_values(network))})
     with io.open(modelfile + '.vars', 'wb') as f:
         f.writelines('%s=%s\n' % kv for kv in cfg.items())
+    if options.save_errors:
+        np.savez(modelfile[:-len('.npz')] + '.err.npz',
+                 np.asarray(errors).reshape(epochs, -1))
 
 if __name__=="__main__":
     main()
