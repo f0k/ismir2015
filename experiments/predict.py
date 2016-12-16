@@ -106,30 +106,24 @@ def main():
                     order=spline_order)
                   for spect in spects)
 
-    # - prepare mel filterbank
-    filterbank = audio.create_mel_filterbank(sample_rate, frame_len, mel_bands,
-                                             mel_min, mel_max)
-    filterbank = filterbank[:bin_mel_max].astype(floatX)
-
-    # - define generator for mel spectra
-    spects = (np.log(np.maximum(np.dot(spect[:, :bin_mel_max], filterbank),
-                                1e-7))
+    # - define generator for logarithmized spectra
+    spects = (np.log1p(spect[:, :bin_mel_max])
               for spect in spects)
 
     # - load mean/std
     meanstd_file = os.path.join(os.path.dirname(__file__),
-                                '%s_meanstd.npz' % options.dataset)
+                                '%s_raw_meanstd.npz' % options.dataset)
     with np.load(meanstd_file) as f:
         mean = f['mean']
         std = f['std']
-    mean = mean.astype(floatX)
-    istd = np.reciprocal(std).astype(floatX)
+    mean = mean[:bin_mel_max].astype(floatX)
+    istd = np.reciprocal(std[:bin_mel_max]).astype(floatX)
 
     # - define generator for Z-scoring
     spects = ((spect - mean) * istd for spect in spects)
 
     # - define generator for silence-padding
-    pad = np.tile((np.log(1e-7) - mean) * istd, (blocklen // 2, 1))
+    pad = np.tile(-mean * istd, (blocklen // 2, 1))
     spects = (np.concatenate((pad, spect, pad), axis=0) for spect in spects)
 
     # - we start the generator in a background thread (not required)
@@ -140,7 +134,7 @@ def main():
     # instantiate neural network
     input_var = T.tensor3('input')
     inputs = input_var.dimshuffle(0, 'x', 1, 2)  # insert "channels" dimension
-    network = model.architecture(inputs, (None, 1, blocklen, mel_bands))
+    network = model.architecture(inputs, (None, 1, blocklen, bin_mel_max))
 
     # load saved weights
     with np.load(modelfile) as f:

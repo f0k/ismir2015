@@ -99,41 +99,29 @@ def main():
         timestamps = np.arange(len(spect)) / float(fps)
         labels.append(create_aligned_targets(segments, timestamps, np.bool))
 
-    # - prepare mel filterbank
-    filterbank = audio.create_mel_filterbank(sample_rate, frame_len, mel_bands,
-                                             mel_min, mel_max)
-    filterbank = filterbank[:bin_mel_max].astype(floatX)
-
-    # - precompute mel spectra, if needed, otherwise just define a generator
-    mel_spects = (np.log(np.maximum(np.dot(spect[:, :bin_mel_max], filterbank),
-                                    1e-7))
-                  for spect in spects)
-    if not options.augment:
-        mel_spects = list(mel_spects)
-        del spects
-
     # - load mean/std or compute it, if not computed yet
     meanstd_file = os.path.join(os.path.dirname(__file__),
-                                '%s_meanstd.npz' % options.dataset)
+                                '%s_raw_meanstd.npz' % options.dataset)
     try:
         with np.load(meanstd_file) as f:
             mean = f['mean']
             std = f['std']
     except (IOError, KeyError):
         print("Computing mean and standard deviation...")
-        mean, std = znorm.compute_mean_std(mel_spects)
+        mean, std = znorm.compute_mean_std(np.log1p(spect) for spect in spects)
         np.savez(meanstd_file, mean=mean, std=std)
-    mean = mean.astype(floatX)
-    istd = np.reciprocal(std).astype(floatX)
+    mean = mean[:bin_mel_max].astype(floatX)
+    istd = np.reciprocal(std[:bin_mel_max]).astype(floatX)
 
     # - prepare training data generator
     print("Preparing training data feed...")
     if not options.augment:
-        # Without augmentation, we just precompute the normalized mel spectra
+        # Without augmentation, we just precompute the normalized spectra
         # and create a generator that returns mini-batches of random excerpts
-        mel_spects = [(spect - mean) * istd for spect in mel_spects]
+        spects = [(np.log1p(spect[:, :bin_mel_max]) - mean) * istd
+                  for spect in spects]
         batches = augment.grab_random_excerpts(
-            mel_spects, labels, batchsize, blocklen)
+            spects, labels, batchsize, blocklen)
     else:
         # For time stretching and pitch shifting, it pays off to preapply the
         # spline filter to each input spectrogram, so it does not need to be
@@ -163,13 +151,11 @@ def main():
                     keep_frames=blocklen, keep_bins=bin_mel_max,
                     order=spline_order, prefiltered=True)
 
-            # We transform the excerpts to mel frequency and log magnitude.
-            batches = augment.apply_filterbank(batches, filterbank)
-            batches = augment.apply_logarithm(batches)
-
             # We apply random frequency filters
-            batches = augment.apply_random_filters(batches, filterbank,
-                                                   mel_max, max_db=10)
+            batches = augment.apply_random_filters(batches, mel_max, max_db=10)
+
+            # We logarithmize
+            batches = augment.apply_logarithm(batches)
 
             # We apply normalization
             batches = augment.apply_znorm(batches, mean, istd)
@@ -201,7 +187,7 @@ def main():
     # instantiate neural network
     input_var = T.tensor3('input')
     inputs = input_var.dimshuffle(0, 'x', 1, 2)  # insert "channels" dimension
-    network = model.architecture(inputs, (None, 1, blocklen, mel_bands))
+    network = model.architecture(inputs, (None, 1, blocklen, bin_mel_max))
 
     # create cost expression
     target_var = T.vector('targets')

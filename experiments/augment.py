@@ -140,26 +140,24 @@ def apply_filterbank(batches, filterbank):
                 (spects.shape[0], spects.shape[1], -1)), labels)
 
 
-def apply_logarithm(batches, clip=1e-7):
+def apply_logarithm(batches):
     """
-    Convert linear to logarithmic magnitudes, clipping magnitudes < `clip`.
+    Convert linear to logarithmic magnitudes, as log(1 + x).
     """
     for spects, labels in batches:
-        yield np.log(np.maximum(spects, clip)), labels
+        yield np.log1p(np.maximum(spects, 0)), labels
 
 
-def apply_random_filters(batches, filterbank, max_freq, max_db, min_std=5,
-                         max_std=7):
+def apply_random_filters(batches, max_freq, max_db, min_std=5, max_std=7):
     """
     Applies random filter responses to logarithmic-magnitude mel spectrograms.
     The filter response is a Gaussian of a standard deviation between `min_std`
     and `max_std` semitones, a mean between 150 Hz and `max_freq`, and a
-    strength between -/+ `max_db` dezibel. Assumes the mel spectrograms have
-    been transformed with `filterbank` and cover up to `max_freq` Hz.
+    strength between -/+ `max_db` dezibel. Assumes the spectrograms cover up to
+    `max_freq` Hz.
     """
     for spects, labels in batches:
-        batchsize, length, bands = spects.shape
-        bins = len(filterbank)
+        batchsize, length, bins = spects.shape
         # sample means and std deviations on logarithmic pitch scale
         min_pitch = 12 * np.log2(150)
         max_pitch = 12 * np.log2(max_freq)
@@ -180,12 +178,9 @@ def apply_random_filters(batches, filterbank, max_freq, max_db, min_std=5,
                                  std[:, np.newaxis]) * -.5))
         # transform from dB to factors
         filt = 10**(filt / 20.)
-        # transform to mel scale
-        filt = np.dot(filt.astype(spects.dtype), filterbank)
-        # logarithmize
-        filt = np.log(filt)
-        # apply (it's a simple addition now, broadcasting over the second axis)
-        yield spects + filt[:, np.newaxis, :], labels
+        # apply (multiply, broadcasting over the second axis)
+        filt = np.asarray(filt, dtype=spects.dtype)
+        yield spects * filt[:, np.newaxis, :], labels
 
 
 def apply_znorm(batches, mean, istd):
