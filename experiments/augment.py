@@ -15,18 +15,24 @@ import numpy as np
 import scipy.ndimage
 
 
-def grab_random_excerpts(spects, labels, batchsize, frames):
+def grab_random_excerpts(spects, labels, batchsize, frames, bins=None):
     """
     Exctracts random excerpts of `frames` frames from the spectrograms in
     `spects` paired with the label from `labels` associated with the central
     frame. Yields `batchsize` excerpts at a time. Draws without replacement
-    until exhausted, then shuffles anew and continues.
+    until exhausted, then shuffles anew and continues. If given, `bins` gives
+    the maximum number of frequency bins to return.
     """
+    if bins is None:
+        bins = spects[0].shape[1]
     # buffer to write each batch into
-    batch_spects = np.empty((batchsize, frames, spects[0].shape[1]),
+    batch_spects = np.empty((batchsize, frames, bins),
                             dtype=spects[0].dtype)
     batch_labels = np.empty((batchsize,) + labels[0].shape[1:],
                             dtype=labels[0].dtype)
+    if spects[0].shape[1] < bins:
+        bins = spects[0].shape[1]
+        batch_spects[:, :, bins:] = 0
     # array of all possible (spect_idx, frame_idx) combinations
     indices = np.vstack(np.vstack((np.ones(len(spect) - frames + 1,
                                            dtype=np.int) * spect_idx,
@@ -41,7 +47,7 @@ def grab_random_excerpts(spects, labels, batchsize, frames):
         # draw without replacement until exhausted
         b = 0
         for spect_idx, frame_idx in indices:
-            batch_spects[b] = spects[spect_idx][frame_idx:frame_idx + frames]
+            batch_spects[b, :, :bins] = spects[spect_idx][frame_idx:frame_idx + frames, :bins]
             batch_labels[b] = labels[spect_idx][frame_idx + frames//2]
             b += 1
             if b == batchsize:

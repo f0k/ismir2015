@@ -59,6 +59,12 @@ def opts_parser():
     parser.add_argument('--cache-spectra', metavar='DIR',
             type=str, default=None,
             help='Store spectra in the given directory (disabled by default)')
+    parser.add_argument('--load-spectra',
+            choices=('memory', 'memmap', 'on-demand'), default='memory',
+            help='By default, spectrograms are loaded to memory. Large '
+                 'datasets can be read as memory-mapped files (if not '
+                 'exceeding the allowable number of open files) or read '
+                 'on-demand. The latter two require --cache-spectra.')
     parser.add_argument('--vars', metavar='FILE',
             action='append', type=str,
             default=[os.path.join(os.path.dirname(__file__), 'defaults.vars')],
@@ -77,6 +83,9 @@ def main():
     parser = opts_parser()
     options = parser.parse_args()
     modelfile = options.modelfile
+    if options.load_spectra != 'memory' and not options.cache_spectra:
+        parser.error('option --load-spectra=%s requires --cache-spectra' %
+                     options.load_spectra)
 
     # read configuration files and immediate settings
     cfg = {}
@@ -121,7 +130,8 @@ def main():
         spects.append(cached(cache_fn,
                              audio.extract_spect,
                              os.path.join(datadir, 'audio', fn),
-                             sample_rate, frame_len, fps))
+                             sample_rate, frame_len, fps,
+                             loading_mode=options.load_spectra))
 
     # - load and convert corresponding labels
     print("Loading labels...")
@@ -147,18 +157,22 @@ def main():
     if not options.augment:
         # Without augmentation, we just create a generator that returns
         # mini-batches of random excerpts
-        spects = [spect[:, :bin_mel_max] for spect in spects]
         batches = augment.grab_random_excerpts(
-            spects, labels, batchsize, blocklen)
+            spects, labels, batchsize, blocklen, bin_mel_max)
+        batches = augment.generate_in_background(
+                [batches], num_cached=15)
     else:
         # For time stretching and pitch shifting, it pays off to preapply the
         # spline filter to each input spectrogram, so it does not need to be
         # applied to each mini-batch later.
         spline_order = cfg['spline_order']
-        if spline_order > 1:
+        if spline_order > 1 and options.load_spectra == 'memory':
             from scipy.ndimage import spline_filter
             spects = [spline_filter(spect, spline_order).astype(floatX)
                       for spect in spects]
+            prefiltered = True
+        else:
+            prefiltered = False
 
         # We define a function to create the mini-batch generator. This allows
         # us to easily create multiple generators for multithreading if needed.
@@ -177,7 +191,7 @@ def main():
             batches = augment.apply_random_stretch_shift(
                     batches, max_stretch, max_shift,
                     keep_frames=blocklen, keep_bins=bin_mel_max,
-                    order=spline_order, prefiltered=True)
+                    order=spline_order, prefiltered=prefiltered)
 
             # We apply random frequency filters
             max_db = cfg['max_db']
