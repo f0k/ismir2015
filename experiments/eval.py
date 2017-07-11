@@ -27,7 +27,7 @@ def opts_parser():
     parser = ArgumentParser(description=descr)
     parser.add_argument('infile', nargs='+', metavar='INFILE',
             type=str,
-            help='File to load the prediction curves from (.npz format). '
+            help='File to load the prediction curves from (.npz/.pkl format). '
                  'If given multiple times, prediction curves will be '
                  'averaged.')
     parser.add_argument('--dataset',
@@ -145,16 +145,6 @@ def main():
     infiles = options.infile
     fps = 70
     
-    # load network predictions
-    preds = np.load(infiles[0])
-    if len(infiles) > 1:
-        preds = {fn: preds[fn] / len(infiles) for fn in preds.files}
-        for infile in infiles[1:]:
-            morepreds = np.load(infile)
-            for fn in preds:
-                preds[fn] += morepreds[fn] / len(infiles)
-        del morepreds
-
     # load file lists
     datadir = os.path.join(os.path.dirname(__file__),
                            os.path.pardir, 'datasets', options.dataset)
@@ -162,6 +152,17 @@ def main():
         filelist_valid = [l.rstrip() for l in f if l.rstrip()]
     with io.open(os.path.join(datadir, 'filelists', 'test')) as f:
         filelist_test = [l.rstrip() for l in f if l.rstrip()]
+    filelist_all = filelist_valid + filelist_test
+
+    # load network predictions
+    preds = np.load(infiles[0])
+    if len(infiles) > 1:
+        preds = {fn: preds[fn] / len(infiles) for fn in filelist_all}
+        for infile in infiles[1:]:
+            morepreds = np.load(infile)
+            for fn in preds:
+                preds[fn] += morepreds[fn] / len(infiles)
+        del morepreds
 
     # optimize threshold on validation set if needed
     if options.threshold is None:

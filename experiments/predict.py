@@ -39,7 +39,7 @@ def opts_parser():
             help='File to load the learned weights from (.npz format)')
     parser.add_argument('outfile', metavar='OUTFILE',
             type=str,
-            help='File to save the prediction curves to (.npz format)')
+            help='File to save the prediction curves to (.npz/.pkl format)')
     parser.add_argument('--dataset',
             type=str, default='jamendo',
             help='Name of the dataset to use (default: %(default)s)')
@@ -204,7 +204,16 @@ def main():
 
     # save predictions
     print("Saving predictions")
-    np.savez(outfile, **{fn: pred for fn, pred in zip(filelist, predictions)})
+    data = dict(zip(filelist, predictions))
+    if outfile.endswith('.pkl'):
+        try:
+            import cPickle as pickle
+        except ImportError:
+            import pickle
+        with io.open(outfile, 'wb') as f:
+            pickle.dump(data, f, protocol=-1)
+    else:
+        np.savez(outfile, **data)
 
 if __name__=="__main__":
     main()
