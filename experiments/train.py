@@ -225,6 +225,11 @@ def main():
     targets = targets.dimshuffle(0, 'x')  # turn into column vector
     outputs = lasagne.layers.get_output(network, deterministic=False)
     cost = T.mean(lasagne.objectives.binary_crossentropy(outputs, targets))
+    if cfg.get('l2_decay', 0):
+        cost_l2 = lasagne.regularization.regularize_network_params(
+                network, lasagne.regularization.l2) * cfg['l2_decay']
+    else:
+        cost_l2 = 0
 
     # prepare and compile training function
     params = lasagne.layers.get_all_params(network, trainable=True)
@@ -241,7 +246,7 @@ def main():
     else:
         raise ValueError('Unknown learn_scheme=%s' % cfg['learn_scheme'])
     eta = theano.shared(lasagne.utils.floatX(initial_eta))
-    updates = learn_scheme(cost, params, eta, momentum)
+    updates = learn_scheme(cost + cost_l2, params, eta, momentum)
     print("Compiling training function...")
     train_fn = theano.function([input_var, target_var], cost, updates=updates)
 
