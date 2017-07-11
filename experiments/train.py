@@ -201,6 +201,7 @@ def main():
     params = lasagne.layers.get_all_params(network, trainable=True)
     initial_eta = cfg['initial_eta']
     eta_decay = cfg['eta_decay']
+    eta_decay_every = cfg.get('eta_decay_every', 1)
     momentum = cfg['momentum']
     if cfg['learn_scheme'] == 'nesterov':
         learn_scheme = lasagne.updates.nesterov_momentum
@@ -230,7 +231,8 @@ def main():
                 print("\nEncountered NaN loss in training. Aborting.")
                 sys.exit(1)
         print("Train loss: %.3f" % (err / epochsize))
-        eta.set_value(eta.get_value() * lasagne.utils.floatX(eta_decay))
+        if eta_decay != 1 and (epoch + 1) % eta_decay_every == 0:
+            eta.set_value(eta.get_value() * lasagne.utils.floatX(eta_decay))
 
     # save final network
     print("Saving final model")
