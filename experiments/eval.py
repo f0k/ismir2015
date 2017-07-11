@@ -40,6 +40,13 @@ def opts_parser():
     parser.add_argument('--auroc',
             action='store_true', default=False,
             help='If given, compute AUROC on the test set.')
+    parser.add_argument('--smooth-width', metavar='WIDTH',
+            type=int, default=56,
+            help='Apply temporal smoothing over WIDTH frames (default: '
+                 '(default)s)')
+    parser.add_argument('--smooth-method', metavar='METHOD',
+            type=str, choices=('median', 'mean'), default='median',
+            help='Temporal smoothing method (default: %(default)s)')
     return parser
 
 def load_labels(filelist, predictions, fps, datadir):
@@ -55,13 +62,20 @@ def load_labels(filelist, predictions, fps, datadir):
     return labels
 
 def evaluate(predictions, truth, threshold=None, smoothen=56,
-        collapse_files=True, compute_auroc=False):
+        smooth_fn='median', collapse_files=True, compute_auroc=False):
     assert len(predictions) == len(truth)
 
     # preprocess network outputs
     if smoothen:
-        predictions = [scipy.ndimage.filters.median_filter(
-                pred, smoothen, mode='nearest') for pred in predictions]
+        if smooth_fn == 'median':
+            smooth_fn = lambda p: scipy.ndimage.filters.median_filter(
+                    p, smoothen, mode='nearest')
+        elif smooth_fn == 'mean':
+            smooth_fn = lambda p: scipy.ndimage.filters.uniform_filter(
+                    p, smoothen, mode='nearest')
+        predictions = [smooth_fn(pred)
+                if len(pred) > 1 else pred
+                for pred in predictions]
 
     # evaluate
     if threshold is None or compute_auroc:
@@ -153,13 +167,15 @@ def main():
     if options.threshold is None:
         options.threshold, _ = evaluate(
                 [preds[fn].ravel() for fn in filelist_valid],
-                load_labels(filelist_valid, preds, fps, datadir))
+                load_labels(filelist_valid, preds, fps, datadir),
+                smoothen=options.smooth_width, smooth_fn=options.smooth_method)
     
     # evaluate on test set
     threshold, results = evaluate(
                 [preds[fn].ravel() for fn in filelist_test],
                 load_labels(filelist_test, preds, fps, datadir),
-                threshold=options.threshold, compute_auroc=options.auroc)                
+                smoothen=options.smooth_width, smooth_fn=options.smooth_method,
+                threshold=options.threshold, compute_auroc=options.auroc)
 
     # print results
     if sys.stdout.isatty():
