@@ -294,6 +294,8 @@ def main():
     batches = iter(batches)
     if options.save_errors:
         errors = []
+    if first_params and cfg['first_params_log']:
+        first_params_hist = []
     for epoch in range(epochs):
         # actual training
         err = 0
@@ -304,6 +306,12 @@ def main():
             if not np.isfinite(err):
                 print("\nEncountered NaN loss in training. Aborting.")
                 sys.exit(1)
+            if first_params and cfg['first_params_log'] and (batch % cfg['first_params_log'] == 0):
+                first_params_hist.append(tuple(param.get_value()
+                                               for param in first_params))
+                np.savez(modelfile[:-4] + '.hist.npz',
+                         **{'param%d' % i: param
+                            for i, param in enumerate(zip(*first_params_hist))})
         if eta_decay != 1 and (epoch + 1) % eta_decay_every == 0:
             eta.set_value(eta.get_value() * lasagne.utils.floatX(eta_decay))
 
