@@ -104,7 +104,10 @@ def main():
     batchsize = cfg['batchsize']
     
     bin_nyquist = frame_len // 2 + 1
-    bin_mel_max = bin_nyquist * 2 * mel_max // sample_rate
+    if cfg['filterbank'] == 'mel_learn':
+        bin_mel_max = bin_nyquist
+    else:
+        bin_mel_max = bin_nyquist * 2 * mel_max // sample_rate
 
     # prepare dataset
     datadir = os.path.join(os.path.dirname(__file__),

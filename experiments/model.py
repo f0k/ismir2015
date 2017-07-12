@@ -20,6 +20,60 @@ except ImportError:
     pass
 
 
+class MelBankLayer(lasagne.layers.Layer):
+    """
+    Creates a mel filterbank layer of `num_bands` triangular filters, with
+    the first filter initialized to start at `min_freq` and the last one
+    to stop at `max_freq`. Expects to process magnitude spectra created
+    from samples at a sample rate of `sample_rate` with a window length of
+    `frame_len` samples. Learns a vector of `num_bands + 2` values, with
+    the first value giving `min_freq` in mel, and remaining values giving
+    the distance to the respective next peak in mel.
+    """
+    def __init__(self, incoming, sample_rate, frame_len, num_bands, min_freq,
+                 max_freq, trainable=True, **kwargs):
+        super(MelBankLayer, self).__init__(incoming, **kwargs)
+        # mel-spaced peak frequencies
+        min_mel = 1127 * np.log1p(min_freq / 700.0)
+        max_mel = 1127 * np.log1p(max_freq / 700.0)
+        spacing = (max_mel - min_mel) / (num_bands + 1)
+        spaces = np.ones(num_bands + 2) * spacing
+        spaces[0] = min_mel
+        spaces = theano.shared(lasagne.utils.floatX(spaces))  # learned param
+        peaks_mel = spaces.cumsum()
+
+        # create parameter as a vector of real-valued peak bins
+        peaks_hz = 700 * (T.expm1(peaks_mel / 1127))
+        peaks_bin = peaks_hz * frame_len / sample_rate
+        self.peaks = self.add_param(peaks_bin,
+                shape=(num_bands + 2,), name='peaks', trainable=trainable,
+                regularizable=False)
+
+        # store what else is needed
+        self.num_bands = num_bands
+
+    def get_output_shape_for(self, input_shape):
+        return input_shape[:-1] + (self.num_bands,)
+
+    def get_output_for(self, input, **kwargs):
+        num_bins = self.input_shape[-1] or input.shape[-1]
+        x = T.arange(num_bins, dtype=input.dtype).dimshuffle(0, 'x')
+        peaks = self.peaks
+        l, c, r = peaks[0:-2], peaks[1:-1], peaks[2:]
+        # triangles are the minimum of two linear functions f(x) = a*x + b
+        # left side of triangles: f(l) = 0, f(c) = 1 -> a=1/(c-l), b=-a*l
+        tri_left = (x - l) / (c - l)
+        # right side of triangles: f(c) = 1, f(r) = 0 -> a=1/(c-r), b=-a*r
+        tri_right = (x - r) / (c - r)
+        # combine by taking the minimum of the left and right sides
+        tri = T.minimum(tri_left, tri_right)
+        # and clip to only keep positive values
+        bank = T.maximum(0, tri)
+
+        # the dot product of the input with this filter bank is the output
+        return T.dot(input, bank)
+
+
 class PowLayer(lasagne.layers.Layer):
     def __init__(self, incoming, exponent=lasagne.init.Constant(0), **kwargs):
         super(PowLayer, self).__init__(incoming, **kwargs)
@@ -41,6 +95,9 @@ def architecture(input_var, input_shape, cfg):
         layer = DenseLayer(layer, num_units=cfg['mel_bands'],
                 num_leading_axes=-1, W=T.constant(filterbank), b=None,
                 nonlinearity=None)
+    elif cfg['filterbank'] == 'mel_learn':
+        layer = MelBankLayer(layer, cfg['sample_rate'], cfg['frame_len'],
+                cfg['mel_bands'], cfg['mel_min'], cfg['mel_max'])
     elif cfg['filterbank'] != 'none':
         raise ValueError("Unknown filterbank=%s" % cfg['filterbank'])
 
