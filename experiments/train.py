@@ -202,8 +202,16 @@ def main():
     initial_eta = cfg['initial_eta']
     eta_decay = cfg['eta_decay']
     momentum = cfg['momentum']
+    if cfg['learn_scheme'] == 'nesterov':
+        learn_scheme = lasagne.updates.nesterov_momentum
+    elif cfg['learn_scheme'] == 'momentum':
+        learn_scheme = lasagne.update.momentum
+    elif cfg['learn_scheme'] == 'adam':
+        learn_scheme = lasagne.updates.adam
+    else:
+        raise ValueError('Unknown learn_scheme=%s' % cfg['learn_scheme'])
     eta = theano.shared(lasagne.utils.floatX(initial_eta))
-    updates = lasagne.updates.nesterov_momentum(cost, params, eta, momentum)
+    updates = learn_scheme(cost, params, eta, momentum)
     print("Compiling training function...")
     train_fn = theano.function([input_var, target_var], cost, updates=updates)
 
