@@ -35,8 +35,13 @@ def architecture(input_var, input_shape, cfg):
     elif cfg['filterbank'] != 'none':
         raise ValueError("Unknown filterbank=%s" % cfg['filterbank'])
 
-    # magnitude transformation
-    layer = ExpressionLayer(layer, T.log1p)
+    # magnitude transformation, if any
+    if cfg['magscale'] == 'log':
+        layer = ExpressionLayer(layer, lambda x: T.log(T.maximum(1e-7, x)))
+    elif cfg['magscale'] == 'log1p':
+        layer = ExpressionLayer(layer, T.log1p)
+    elif cfg['magscale'] != 'none':
+        raise ValueError("Unknown magscale=%s" % cfg['magscale'])
 
     # standardization per frequency band
     layer = batch_norm_vanilla(layer, axes=(0, 2), beta=None, gamma=None)
