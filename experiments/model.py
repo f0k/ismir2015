@@ -21,8 +21,27 @@ except ImportError:
 
 def architecture(input_var, input_shape, cfg):
     layer = InputLayer(input_shape, input_var)
+
+    # filterbank, if any
+    if cfg['filterbank'] == 'mel':
+        import audio
+        filterbank = audio.create_mel_filterbank(
+                cfg['sample_rate'], cfg['frame_len'], cfg['mel_bands'],
+                cfg['mel_min'], cfg['mel_max'])
+        filterbank = filterbank[:input_shape[3]].astype(theano.config.floatX)
+        layer = DenseLayer(layer, num_units=cfg['mel_bands'],
+                num_leading_axes=-1, W=T.constant(filterbank), b=None,
+                nonlinearity=None)
+    elif cfg['filterbank'] != 'none':
+        raise ValueError("Unknown filterbank=%s" % cfg['filterbank'])
+
+    # magnitude transformation
     layer = ExpressionLayer(layer, T.log1p)
+
+    # standardization per frequency band
     layer = batch_norm_vanilla(layer, axes=(0, 2), beta=None, gamma=None)
+
+    # convolutional neural network
     kwargs = dict(nonlinearity=lasagne.nonlinearities.leaky_rectify,
                   W=lasagne.init.Orthogonal())
     layer = Conv2DLayer(layer, 64, 3, **kwargs)
@@ -34,7 +53,7 @@ def architecture(input_var, input_shape, cfg):
     layer = batch_norm(layer)
     layer = Conv2DLayer(layer, 64, 3, **kwargs)
     layer = batch_norm(layer)
-    layer = Conv2DLayer(layer, 128, (3, 115), **kwargs)
+    layer = Conv2DLayer(layer, 128, (3, layer.output_shape[3] - 3), **kwargs)
     layer = batch_norm(layer)
     layer = MaxPool2DLayer(layer, (1, 4))
     layer = DenseLayer(dropout(layer, 0.5), 256, **kwargs)
