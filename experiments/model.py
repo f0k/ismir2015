@@ -8,9 +8,12 @@ Author: Jan Schlüter
 """
 
 import numpy as np
+import theano
+import theano.tensor as T
 import lasagne
 from lasagne.layers import (InputLayer, Conv2DLayer, MaxPool2DLayer,
-                            DenseLayer, dropout, batch_norm)
+                            DenseLayer, ExpressionLayer, dropout, batch_norm)
+batch_norm_vanilla = batch_norm
 try:
     from lasagne.layers.dnn import batch_norm_dnn as batch_norm
 except ImportError:
@@ -18,6 +21,8 @@ except ImportError:
 
 def architecture(input_var, input_shape):
     layer = InputLayer(input_shape, input_var)
+    layer = ExpressionLayer(layer, T.log1p)
+    layer = batch_norm_vanilla(layer, axes=(0, 2), beta=None, gamma=None)
     kwargs = dict(nonlinearity=lasagne.nonlinearities.leaky_rectify,
                   W=lasagne.init.Orthogonal())
     layer = Conv2DLayer(layer, 64, 3, **kwargs)
