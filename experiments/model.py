@@ -19,6 +19,15 @@ try:
 except ImportError:
     pass
 
+
+class PowLayer(lasagne.layers.Layer):
+    def __init__(self, incoming, exponent=lasagne.init.Constant(0), **kwargs):
+        super(PowLayer, self).__init__(incoming, **kwargs)
+        self.exponent = self.add_param(exponent, shape=(), name='exponent', regularizable=False)
+    def get_output_for(self, input, **kwargs):
+        return input ** self.exponent
+
+
 def architecture(input_var, input_shape, cfg):
     layer = InputLayer(input_shape, input_var)
 
@@ -40,6 +49,18 @@ def architecture(input_var, input_shape, cfg):
         layer = ExpressionLayer(layer, lambda x: T.log(T.maximum(1e-7, x)))
     elif cfg['magscale'] == 'log1p':
         layer = ExpressionLayer(layer, T.log1p)
+    elif cfg['magscale'].startswith('log1p_learn'):
+        # learnable log(1 + 10^a * x), with given initial a (or default 0)
+        a = float(cfg['magscale'][len('log1p_learn'):] or 0)
+        a = T.exp(theano.shared(lasagne.utils.floatX(a)))
+        layer = lasagne.layers.ScaleLayer(layer, scales=a,
+                                          shared_axes=(0, 1, 2, 3))
+        layer = ExpressionLayer(layer, T.log1p)
+    elif cfg['magscale'].startswith('pow_learn'):
+        # learnable x^sigmoid(a), with given initial a (or default 0)
+        a = float(cfg['magscale'][len('pow_learn'):] or 0)
+        a = T.nnet.sigmoid(theano.shared(lasagne.utils.floatX(a)))
+        layer = PowLayer(layer, exponent=a)
     elif cfg['magscale'] != 'none':
         raise ValueError("Unknown magscale=%s" % cfg['magscale'])
 
