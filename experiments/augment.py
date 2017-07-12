@@ -87,6 +87,8 @@ def apply_random_stretch_shift(batches, max_stretch, max_shift,
                     output_shape=(keep_frames, keep_bins), output=output,
                     offset=offset, mode='constant', cval=0, order=order,
                     prefilter=not prefiltered)
+        # clip possible negative values introduced by the interpolation
+        np.maximum(outputs, 0, outputs)
         yield outputs, labels
 
 
