@@ -58,9 +58,14 @@ def architecture(input_var, input_shape, cfg):
     layer = batch_norm(layer)
     layer = Conv2DLayer(layer, 64, 3, **kwargs)
     layer = batch_norm(layer)
-    layer = Conv2DLayer(layer, 128, (3, layer.output_shape[3] - 3), **kwargs)
-    layer = batch_norm(layer)
-    layer = MaxPool2DLayer(layer, (1, 4))
+    if cfg['arch'] == 'ismir2015':
+        layer = MaxPool2DLayer(layer, 3)
+    elif cfg['arch'] == 'ismir2016':
+        layer = Conv2DLayer(layer, 128, (3, layer.output_shape[3] - 3), **kwargs)
+        layer = batch_norm(layer)
+        layer = MaxPool2DLayer(layer, (1, 4))
+    else:
+        raise ValueError('Unknown arch=%s' % cfg['arch'])
     layer = DenseLayer(dropout(layer, 0.5), 256, **kwargs)
     layer = batch_norm(layer)
     layer = DenseLayer(dropout(layer, 0.5), 64, **kwargs)
