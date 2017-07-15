@@ -128,18 +128,32 @@ def architecture(input_var, input_shape, cfg):
     kwargs = dict(nonlinearity=lasagne.nonlinearities.leaky_rectify,
                   W=lasagne.init.Orthogonal())
     maybe_batch_norm = batch_norm if cfg['arch.batch_norm'] else lambda x: x
+    if cfg['arch.convdrop'] == 'independent':
+        maybe_dropout = lambda x: dropout(x, 0.1)
+    elif cfg['arch.convdrop'] == 'channels':
+        maybe_dropout = lambda x: dropout(x, 0.1, shared_axes=(2, 3))
+    elif cfg['arch.convdrop'] == 'bands':
+        maybe_dropout = lambda x: dropout(x, 0.1, shared_axes=(1, 2))
+    elif cfg['arch.convdrop'] == 'none':
+        maybe_dropout = lambda x: x
+    else:
+        raise ValueError("Unknown arch.convdrop=%s" % cfg['arch.convdrop'])
     layer = Conv2DLayer(layer, 64, 3, **kwargs)
     layer = maybe_batch_norm(layer)
+    layer = maybe_dropout(layer)
     layer = Conv2DLayer(layer, 32, 3, **kwargs)
     layer = maybe_batch_norm(layer)
     layer = MaxPool2DLayer(layer, 3)
+    layer = maybe_dropout(layer)
     layer = Conv2DLayer(layer, 128, 3, **kwargs)
     layer = maybe_batch_norm(layer)
+    layer = maybe_dropout(layer)
     layer = Conv2DLayer(layer, 64, 3, **kwargs)
     layer = maybe_batch_norm(layer)
     if cfg['arch'] == 'ismir2015':
         layer = MaxPool2DLayer(layer, 3)
     elif cfg['arch'] == 'ismir2016':
+        layer = maybe_dropout(layer)
         layer = Conv2DLayer(layer, 128, (3, layer.output_shape[3] - 3), **kwargs)
         layer = maybe_batch_norm(layer)
         layer = MaxPool2DLayer(layer, (1, 4))
