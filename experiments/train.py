@@ -45,6 +45,11 @@ def opts_parser():
     parser.add_argument('--no-augment',
             action='store_false', dest='augment',
             help='Disable train-time data augmentation')
+    parser.add_argument('--scribble',
+            type=float, default=0,
+            help='If performing train-time data augmentation, corrupt the '
+                 'given amount of examples with random wiggly lines (default: '
+                 '%(default)s)')
     parser.add_argument('--cache-spectra', metavar='DIR',
             type=str, default=None,
             help='Store spectra in the given directory (disabled by default)')
@@ -175,8 +180,9 @@ def main():
             batches = augment.apply_znorm(batches, mean, istd)
 
             # We add random scribbled wiggly lines
-            scribble = .1
-            batches = augment.apply_random_scribbles(batches, amount=scribble)
+            if options.scribble:
+                batches = augment.apply_random_scribbles(batches,
+                                                         options.scribble)
 
             return batches
 
