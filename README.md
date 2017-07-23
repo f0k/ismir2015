@@ -8,6 +8,13 @@ Information Retrieval Conference (ISMIR 2015).
 [[Paper](http://ofai.at/~jan.schlueter/pubs/2015_ismir.pdf),
 [BibTeX](http://ofai.at/~jan.schlueter/pubs/2015_ismir.bib)]
 
+For follow-up experiments described in my PhD thesis, see the
+[`phd_extra`](//github.com/f0k/ismir2015/tree/phd_extra) branch, and for
+experiments on training a network to not be irritated by wiggly lines, see the
+[`unhorse`](//github.com/f0k/ismir2015/tree/unhorse) branch. For a
+demonstration on how the networks can be fooled with hand-drawn wiggly lines,
+see the [`singing_horse`](//github.com/f0k/singing_horse) repository.
+
 
 Preliminaries
 -------------
@@ -156,6 +163,8 @@ use zero-padding of input files during training, while this implementation
 discards the borders for training and only pads for testing), but very close.
 It is written to be easy to read and pick out parts for reuse (obeying the
 license), not so much as a generic starting point for own experiments.
+For a more feature-complete starting point, see the
+[`phd_extra`](//github.com/f0k/ismir2015/tree/phd_extra) branch.
 
 ### ... the results
 
