@@ -1,12 +1,27 @@
-Exploring Data Augmentation for Improved Singing Voice Detection with Neural Networks
-=====================================================================================
+Horse Taming for Singing Voice Detection with Neural Networks
+=============================================================
 
-This is a reimplementation of the experiments presented in the paper "Exploring
-Data Augmentation for Improved Singing Voice Detection with Neural Networks" by
-Jan Schlüter and Thomas Grill at the 16th International Society for Music
-Information Retrieval Conference (ISMIR 2015).
-[[Paper](http://ofai.at/~jan.schlueter/pubs/2015_ismir.pdf),
-[BibTeX](http://ofai.at/~jan.schlueter/pubs/2015_ismir.bib)]
+This is the implementation for an experiment presented in the "Extensions
+and Dead Ends" section of the "Singing Voice Detection" chapter in my Phd
+thesis titled "Deep Learning for Event Detection, Sequence Labelling and
+Similarity Estimation in Music Signals" (Section 9.8; to appear).
+
+As demonstrated in the [`singing_horse`](//github.com/f0k/singing_horse)
+repository, the most salient feature used by the networks to detect singing
+voice are sloped or wiggly lines in a spectrogram. While this gives
+state-of-the-art results, this is not exactly what singing voice is about, and
+thus the classifier could be called a *horse* (a term
+[coined by Bob Sturm](https://doi.org/10.1109/TMM.2014.2330697) in reference to ["Clever Hans"](https://en.wikipedia.org/wiki/Clever_Hans)).
+
+The experiment in this repository implements a data augmentation scheme that
+scribbles wiggly lines into the mel spectrogram processed by the network, in
+order to train it to ignore these lines and possibly develop a better concept
+of singing voice than "sloped lines in a spectrogram".
+
+For the baseline experiments of my ISMIR 2015 paper, see the
+[`master`](//github.com/f0k/ismir2015) branch, and for other follow-up
+experiments of my PhD thesis, see the
+[`phd_extra`](//github.com/f0k/ismir2015/tree/phd_extra) branch.
 
 
 Preliminaries
@@ -45,12 +60,14 @@ pip install pyfftw
 Setup
 -----
 
-For preparing the experiments, clone the repository somewhere:
+For preparing the experiments, clone the repository somewhere and checkout the
+`unhorse` branch:
 ```bash
 git clone https://github.com/f0k/ismir2015.git
+git checkout unhorse
 ```
 If you do not have `git` available, download the code from
-https://github.com/f0k/ismir2015/archive/master.zip and extract it.
+https://github.com/f0k/ismir2015/archive/unhorse.zip and extract it.
 
 The experiments use the public [Jamendo dataset by Mathieu Ramona](www.mathieuramona.com/wp/data/jamendo/).
 To download and prepare it, open the cloned or extracted repository in a
@@ -60,89 +77,69 @@ bash terminal and execute the following scripts (in this order):
 ./datasets/jamendo/filelists/recreate.sh
 ./datasets/jamendo/labels/recreate.sh
 ```
+The dataset format is the same as used in the `master` branch; so in case you
+tried that already, you can skip this step (and just checkout `phd_extra`).
 
 
 Experiments
 -----------
 
-Table 1 in the paper shows results for Jamendo without data augmentation,
-with train-time augmentation (combining pitch-shifting, time-stretching and
-random frequency filtering), with test-time augmentation (pitch-shifting only)
-and with both train-time and test-time augmentation.
+Compared to the ISMIR 2015 paper and the `master` branch, the experiments use
+the improved architecture from my ISMIR 2016 paper ("Learning to Pinpoint
+Singing Voice from Weakly-Labeled Examples",
+[[Paper](http://ofai.at/~jan.schlueter/pubs/2016_ismir.pdf),
+[BibTeX](http://ofai.at/~jan.schlueter/pubs/2016_ismir.bib)), but still applied
+to mel spectrograms. Compared to the other follow-up experiments in the
+`phd_extra` branch, spectrograms are mel-scaled, standardized and augmented
+before they reach the network, not mel-scaled and batch-normalized within the
+network (this would have required implementing the augmentation in Theano).
+So we first train a baseline, then a version with sloped lines augmentation.
 
-### w/o augmentation
+### baseline
 
-To reproduce results without augmentation, run the following in a terminal in
-the cloned or extracted repository:
+To train and evaluate the baseline network with five repetitions, run the
+following in a terminal in the cloned or extracted repository:
 ```bash
 cd experiments
-python train.py --no-augment --cache=/tmp jamendo_noaugment.npz
-python predict.py --cache=/tmp jamendo_noaugment.{,pred.}npz
-python eval.py jamendo_noaugment.pred.npz
+mkdir unhorse
+for r in {1..5}; do OMP_NUM_THREADS=1 ./train.py --cache=/tmp unhorse/baseline$r.npz; done
+for r in {1..5}; do ./predict.py --cache=/tmp unhorse/baseline$r{,.pred}.npz; done
+for r in {1..5}; do ./eval.py unhorse/baseline$r.pred.npz; done
 ```
-The `--cache=/tmp` option will store the spectrograms in `/tmp` so they do not
-have to be recomputed for further runs. You can pass any directory there, or
-omit this option to always compute them on-the-fly (this will add less than a
-minute to training, and less than half a minute to computing the predictions).
-Total space requirements for the spectrograms are about 3.2 GiB.
+In my case, this gave a classification error of 7.3(±0.5)%.
 
-The training code will produce two files: `jamendo_meanstd.npz`, storing the
-statistics needed to standardize the data, computed on the training set, and
-`jamendo_noaugment.npz`, storing the weights of the trained network.
+### sloped lines augmentation
 
-The second command reads the network weights, computes predictions for all
-files of the validation and test set, and stores them in
-`jamendo_noaugment.pred.npz`.
-
-Finally, the third command reads the predictions, preprocesses them, optimizes
-the threshold on the validation set and reports results on the test set.
-
-Each command can be run with `--help` for documentation on further options.
-
-### train augmentation
-
-To reproduce results with train-time augmentation, run:
+To augment 10% of examples with artificial sloped lines, run:
 ```bash
-OMP_NUM_THREADS=1 python train.py --augment --cache=/tmp jamendo_augment.npz
-python predict.py --cache=/tmp jamendo_augment{,.pred}.npz
-python eval.py jamendo_augment.pred.npz
+for r in {1..5}; do OMP_NUM_THREADS=1 ./train.py --scribble=0.1 --cache=/tmp unhorse/scribble$r.npz; done
+for r in {1..5}; do ./predict.py --cache=/tmp unhorse/scribble$r{,.pred}.npz; done
+for r in {1..5}; do ./eval.py unhorse/scribble$r.pred.npz; done
 ```
+In my case, this gave a classification error of 7.5(±0.2)%. So if anything,
+results got worse, not better.
 
-The only change is that `--augment` is activated for training. By default, data
-augmentation will happen on CPU in three background threads running in parallel
-to the training thread. Change `bg_threads` or `bg_processes` in `train.py` if
-this is not what you want (this is not exposed as a command line argument). The
-`OMP_NUM_THREADS=1` environment variable setting prevents the background
-threads from using multi-threaded BLAS routines, which would slow things down.
+### qualitative comparison
 
-### test augmentation
-
-For test-time augmentation, run:
+To check whether the network actually learned to ignore wiggly lines, we can
+have a look at its predictions for altered test examples. For the baseline:
 ```bash
-python predict.py --cache=/tmp --pitchshift=+10 jamendo_noaugment{,_p10.pred}.npz
-python predict.py --cache=/tmp --pitchshift=+20 jamendo_noaugment{,_p20.pred}.npz
-python predict.py --cache=/tmp --pitchshift=-10 jamendo_noaugment{,_m10.pred}.npz
-python predict.py --cache=/tmp --pitchshift=-20 jamendo_noaugment{,_m20.pred}.npz
-python eval.py jamendo_noaugment{,_p10,_p20,_m10,_m20}.pred.npz
+./predict.py --cache=/tmp unhorse/baseline1.npz /tmp/foo.npz --plot --scribble
 ```
+You will see that the baseline mistakes the artificial wiggly lines for singing
+voice, as shown in Figure 9.14b of my thesis. Note that this requires
+[matplotlib with an interactive backend](https://matplotlib.org/faq/usage_faq.html#what-is-a-backend)
+(if in doubt, it should be fine if you run this on your desktop, but for a
+headless server, you will need to change the `plt.show()` calls to
+`plt.savefig('yourfilename.png')`, for example).
 
-This computes predictions for the first network with files pitch-shifted by
-+10, +20, -10 and -20 percent, then bags the predictions (along with the
-non-shifted ones) for evaluation.
-
-### train/test augmentation
-
-For train-time and test-time augmentation, run:
+For a network trained to ignore wiggly lines:
 ```bash
-python predict.py --cache=/tmp --pitchshift=+10 jamendo_augment{,_p10.pred}.npz
-python predict.py --cache=/tmp --pitchshift=+20 jamendo_augment{,_p20.pred}.npz
-python predict.py --cache=/tmp --pitchshift=-10 jamendo_augment{,_m10.pred}.npz
-python predict.py --cache=/tmp --pitchshift=-20 jamendo_augment{,_m20.pred}.npz
-python eval.py jamendo_augment{,_p10,_p20,_m10,_m20}.pred.npz
+./predict.py --cache=/tmp unhorse/scribble1.npz /tmp/foo.npz --plot --scribble
 ```
-
-Similar to the previous step, this uses a network we trained before and
-applies it to different pitch-shifted versions.
+You should see that the network indeed ignores the wiggly lines, as shown in
+Figure 9.14c of my thesis. Alas, it did not force the network to find better
+cues for singing voice detection, just to ignore the specific augmentation.
 
 
 About...
@@ -150,12 +147,9 @@ About...
 
 ### ... the code
 
-This is not the code used for the original paper, but a compacted
-reimplementation. It is not perfectly identical (e.g., the original experiments
-use zero-padding of input files during training, while this implementation
-discards the borders for training and only pads for testing), but very close.
-It is written to be easy to read and pick out parts for reuse (obeying the
-license), not so much as a generic starting point for own experiments.
+This code is a direct fork from the `master` branch (i.e., the ISMIR 2015
+reimplementation) which just changes the architecture and adds another
+augmentation method.
 
 ### ... the results
 
@@ -163,5 +157,3 @@ Results will vary depending on the random initialization of the networks. Even
 with fixed random seeds, results will not be exactly reproducible due to the
 multi-threaded data augmentation. Furthermore, when training on GPU with cuDNN,
 the backward pass is nondeterministic by default, introducing further noise.
-For more reliable comparison between the four variants, each experiment should
-be repeated at least five times, to compute averages and confidence intervals.
