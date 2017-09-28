@@ -201,13 +201,13 @@ networks using spatial (channelwise) dropout, run:
 ```bash
 ./eval.py dropout/channels*pred.pkl
 ```
-This gave an error of 0.59 in my experiments.
+This gave an error of 5.9% in my experiments.
 
 To bag the ten baseline networks, run:
 ```bash
 ./eval.py spectlearn/allfixed*pred.pkl
 ```
-This gave an error of 0.58:
+This gave an error of 5.8%:
 ```
 thr: 0.69, prec: 0.942, rec: 0.932, spec: 0.950, f1: 0.937, err: 0.058
 ```
@@ -217,7 +217,7 @@ To bag everything, run:
 ```bash
 ./eval.py */*pred.pkl
 ```
-This also gave an error of 0.58.
+This also gave an error of 5.8%.
 
 
 About...
