@@ -3,8 +3,9 @@ Follow-up Experiments for Singing Voice Detection with Neural Networks
 
 This is the implementation for most experiments presented in the "Extensions
 and Dead Ends" section of the "Singing Voice Detection" chapter in my Phd
-thesis titled "Deep Learning for Event Detection, Sequence Labelling and
-Similarity Estimation in Music Signals" (Section 9.8; to appear).
+thesis titled ["Deep Learning for Event Detection, Sequence Labelling and
+Similarity Estimation in Music Signals"](http://ofai.at/~jan.schlueter/pubs/phd/phd.pdf)
+(Section 9.8).
 
 Specifically, it includes experiments for learning a magnitude transformation
 of the input spectrograms, for learning the center frequencies of a mel
