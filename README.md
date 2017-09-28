@@ -246,7 +246,7 @@ Some interesting features are:
   a new feature conditioned on a key-value setting, add this setting to
   `defaults.vars` such that default behaviour stays the same, add a new line
   to `train_all.sh` that passes different `--var key=value` settings, and run
-  the script. See the changeset of commit @c6634d3 for an example.
+  the script. See the changeset of commit f2ebbfc for an example.
 
 The advantage of using such a template over creating a more generic experiment
 framework is that you have direct control of all dataset preparation, model
