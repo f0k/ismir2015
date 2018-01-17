@@ -60,6 +60,15 @@ def apply_random_stretch_shift(batches, max_stretch, max_shift,
     and the first `keep_bins` bins. For performance, the spline `order` can be
     reduced, and inputs can be `prefiltered` with scipy.ndimage.spline_filter.
     """
+    new_scipy = (map(int, scipy.__version__.split('.', 2)[:2]) >= [0, 18])
+    if new_scipy:
+        # Changed offset handling: https://github.com/scipy/scipy/issues/1547
+        import warnings
+        warnings.filterwarnings(
+                "ignore", "The behaviour of affine_transform with a "
+                "one-dimensional array supplied for the matrix parameter "
+                "has changed in scipy 0.18.0.", module="scipy.ndimage")
+
     for spects, labels in batches:
         outputs = np.empty((len(spects), keep_frames, keep_bins),
                            dtype=spects.dtype)
@@ -67,14 +76,16 @@ def apply_random_stretch_shift(batches, max_stretch, max_shift,
         for spect, output, random in zip(spects, outputs, randoms):
             stretch = 1 + random[0] * max_stretch
             shift = 1 + random[1] * max_shift
+            offset = ((.5 * (len(spect) - keep_frames / stretch), 0)
+                      if new_scipy else
+                      (.5 * (len(spect) * stretch - keep_frames), 0))
             # We can do shifting/stretching and cropping in a single affine
             # transform (including setting the upper bands to zero if we shift
             # down the signal so far that we exceed the input's nyquist rate)
             scipy.ndimage.affine_transform(
                     spect, (1 / stretch, 1 / shift),
                     output_shape=(keep_frames, keep_bins), output=output,
-                    offset=(.5 * (len(spect) * stretch - keep_frames), 0),
-                    mode='constant', cval=0, order=order,
+                    offset=offset, mode='constant', cval=0, order=order,
                     prefilter=not prefiltered)
         yield outputs, labels
 
