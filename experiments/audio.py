@@ -15,8 +15,11 @@ import numpy as np
 try:
     from pyfftw.builders import rfft as rfft_builder
 except ImportError:
-    def rfft_builder(*args, **kwargs):
-        return np.fft.rfft
+    def rfft_builder(samples, *args, **kwargs):
+        if samples.dtype == np.float32:
+            return lambda *a, **kw: np.fft.rfft(*a, **kw).astype(np.complex64)
+        else:
+            return np.fft.rfft
 
 
 def read_ffmpeg(infile, sample_rate, cmd='ffmpeg'):
@@ -39,7 +42,7 @@ def spectrogram(samples, sample_rate, frame_len, fps, batch=50):
     """
     if len(samples) < frame_len:
         return np.empty((0, frame_len // 2 + 1), dtype=samples.dtype)
-    win = np.hanning(frame_len)
+    win = np.hanning(frame_len).astype(samples.dtype)
     hopsize = sample_rate // fps
     num_frames = max(0, (len(samples) - frame_len) // hopsize + 1)
     batch = min(batch, num_frames)
