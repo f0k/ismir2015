@@ -128,7 +128,7 @@ def model_to_fcn(output_layers, allow_unlink=False):
                 # special case: num_leading_axes=-1, no dilation needed
                 blocklen = 1
             elif len(layer.input_shape) == 4:
-                blocklen = np.prod(layer.input_shape[1:]) // layer.input_shape[1] // layer.input_shape[-1]
+                blocklen = int(np.prod(layer.input_shape[1:])) // layer.input_shape[1] // layer.input_shape[-1]
             else:
                 blocklen = 1
             if (blocklen > 1) or (dilation > 1):

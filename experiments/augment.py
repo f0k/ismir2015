@@ -203,7 +203,10 @@ def generate_in_background(generators, num_cached=50, in_processes=False):
     thread/process, and their items will be interleaved in unpredictable order.
     """
     if not in_processes:
-        from Queue import Queue
+        try:
+            from Queue import Queue
+        except ImportError:
+            from queue import Queue
         from threading import Thread as Background
         sentinel = object()  # guaranteed unique reference
     else:
